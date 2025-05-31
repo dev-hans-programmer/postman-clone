@@ -5,12 +5,14 @@ Main application window and controller
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
+from tkinter import simpledialog
 import sys
 from typing import Optional
 
 from config.settings import AppSettings
 from services.api_client import APIClient
 from services.data_manager import DataManager
+from services.collection_manager import CollectionManager
 from models.request_model import APIRequest, AuthType
 from models.response_model import APIResponse
 from models.environment_model import Environment
@@ -34,6 +36,7 @@ class MainWindow:
             max_redirects=self.settings.get_int('network', 'max_redirects', 10)
         )
         self.data_manager = DataManager(settings)
+        self.collection_manager = CollectionManager(settings)
         
         self.current_request = APIRequest()
         self.current_response: Optional[APIResponse] = None
@@ -81,9 +84,18 @@ class MainWindow:
         # Create toolbar
         self._create_toolbar()
         
-        # Create main content area with paned window
-        self.paned_window = ctk.CTkFrame(self.main_frame)
-        self.paned_window.pack(fill="both", expand=True, pady=(10, 0))
+        # Create main content area with three panels
+        self.content_frame = ctk.CTkFrame(self.main_frame)
+        self.content_frame.pack(fill="both", expand=True, pady=(10, 0))
+        
+        # Sidebar for collections
+        self.sidebar = ctk.CTkFrame(self.content_frame, width=300)
+        self.sidebar.pack(side="left", fill="y", padx=(0, 5))
+        self.sidebar.pack_propagate(False)
+        
+        # Main content paned window
+        self.paned_window = ctk.CTkFrame(self.content_frame)
+        self.paned_window.pack(side="right", fill="both", expand=True)
         
         # Left panel for request configuration
         self.left_panel = ctk.CTkFrame(self.paned_window)
@@ -94,6 +106,7 @@ class MainWindow:
         self.right_panel.pack(side="right", fill="both", expand=True, padx=(5, 0))
         
         # Create component panels
+        self._create_collection_panel()
         self._create_request_components()
         self._create_response_components()
         
@@ -191,6 +204,14 @@ class MainWindow:
             hover_color="#007E33"
         )
         self.send_btn.pack(side="right", padx=10, pady=10)
+    
+    def _create_collection_panel(self):
+        """Create collection management panel"""
+        self.collection_panel = CollectionPanel(
+            self.sidebar,
+            self.collection_manager,
+            self.load_request_from_collection
+        )
     
     def _create_request_components(self):
         """Create request configuration components"""
@@ -434,11 +455,16 @@ class MainWindow:
             messagebox.showwarning("Save Request", "No request to save")
             return
         
-        # Simple dialog for collection name
-        name = tk.simpledialog.askstring("Save Request", "Enter request name:")
+        # Update current request with UI values
+        self.current_request.url = self.url_entry.get().strip()
+        self.current_request.method = self.method_var.get()
+        
+        # Simple dialog for request name
+        name = simpledialog.askstring("Save Request", "Enter request name:")
         if name:
             self.current_request.name = name
-            collections = self.data_manager.get_request_collections()
+            self.collection_panel.add_request_to_collection(self.current_request, name)
+            messagebox.showinfo("Saved", f"Request '{name}' saved to collection")ata_manager.get_request_collections()
             
             # For now, save to a default collection
             collection_name = "Default Collection"
@@ -506,6 +532,23 @@ class MainWindow:
         # Clear previous response
         self.response_panel.clear_response()
         self.status_label.configure(text="Request loaded from history")
+    
+    def load_request_from_collection(self, request: APIRequest):
+        """Load a request from collection"""
+        # Update UI
+        self.current_request = request
+        self.url_entry.delete(0, 'end')
+        self.url_entry.insert(0, request.url)
+        self.method_var.set(request.method)
+        
+        # Load into panels
+        self.request_panel.load_request(request)
+        self.headers_panel.load_headers(request.headers)
+        self.auth_panel.load_auth(request.auth_type, request.auth_data)
+        
+        # Clear response
+        self.response_panel.clear_response()
+        self.status_label.configure(text="Request loaded from collection")
     
     def on_closing(self):
         """Handle application closing"""
