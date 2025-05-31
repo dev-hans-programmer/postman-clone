@@ -21,6 +21,7 @@ from ui.components.headers_panel import HeadersPanel
 from ui.components.auth_panel import AuthPanel
 from ui.components.environment_panel import EnvironmentPanel
 from ui.components.history_panel import HistoryPanel
+from ui.components.collection_panel import CollectionPanel
 
 class MainWindow:
     """Main application window"""
