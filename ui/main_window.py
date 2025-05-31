@@ -84,26 +84,41 @@ class MainWindow:
         # Create toolbar
         self._create_toolbar()
         
-        # Create main content area with three panels
-        self.content_frame = ctk.CTkFrame(self.main_frame)
-        self.content_frame.pack(fill="both", expand=True, pady=(10, 0))
+        # Create main content area with resizable paned windows
+        self.main_paned = tk.PanedWindow(
+            self.main_frame, 
+            orient=tk.HORIZONTAL, 
+            sashrelief=tk.RAISED, 
+            sashwidth=6,
+            bg="#212121"
+        )
+        self.main_paned.pack(fill="both", expand=True, pady=(10, 0))
         
-        # Sidebar for collections
-        self.sidebar = ctk.CTkFrame(self.content_frame, width=300)
-        self.sidebar.pack(side="left", fill="y", padx=(0, 5))
-        self.sidebar.pack_propagate(False)
+        # Sidebar for collections (left pane)
+        self.sidebar_frame = ctk.CTkFrame(self.main_paned)
+        self.sidebar_collapsed = False
+        self.sidebar_width = self.settings.get_int('layout', 'sidebar_width', 300)
+        self.main_paned.add(self.sidebar_frame, minsize=50, width=self.sidebar_width)
         
-        # Main content paned window
-        self.paned_window = ctk.CTkFrame(self.content_frame)
-        self.paned_window.pack(side="right", fill="both", expand=True)
+        # Content paned window for request/response (right pane)
+        self.content_paned = tk.PanedWindow(
+            self.main_paned, 
+            orient=tk.HORIZONTAL, 
+            sashrelief=tk.RAISED, 
+            sashwidth=6,
+            bg="#212121"
+        )
+        self.main_paned.add(self.content_paned, minsize=600)
         
         # Left panel for request configuration
-        self.left_panel = ctk.CTkFrame(self.paned_window)
-        self.left_panel.pack(side="left", fill="both", expand=True, padx=(0, 5))
+        self.left_panel = ctk.CTkFrame(self.content_paned)
+        self.request_panel_width = self.settings.get_int('layout', 'request_panel_width', 400)
+        self.content_paned.add(self.left_panel, minsize=300, width=self.request_panel_width)
         
         # Right panel for response display
-        self.right_panel = ctk.CTkFrame(self.paned_window)
-        self.right_panel.pack(side="right", fill="both", expand=True, padx=(5, 0))
+        self.right_panel = ctk.CTkFrame(self.content_paned)
+        self.response_panel_width = self.settings.get_int('layout', 'response_panel_width', 400)
+        self.content_paned.add(self.right_panel, minsize=300, width=self.response_panel_width)
         
         # Create component panels
         self._create_collection_panel()
@@ -193,6 +208,29 @@ class MainWindow:
         self.url_entry.pack(side="left", fill="x", expand=True, padx=10, pady=10)
         self.url_entry.bind('<Return>', lambda e: self.send_request())
         
+        # Layout control buttons
+        self.toggle_sidebar_btn = ctk.CTkButton(
+            self.toolbar_frame,
+            text="⋘",
+            width=30,
+            height=30,
+            command=self.toggle_sidebar,
+            fg_color="#9C27B0",
+            hover_color="#7B1FA2"
+        )
+        self.toggle_sidebar_btn.pack(side="right", padx=(5, 0), pady=10)
+        
+        self.layout_btn = ctk.CTkButton(
+            self.toolbar_frame,
+            text="Layout",
+            width=80,
+            height=30,
+            command=self.show_layout_options,
+            fg_color="#607D8B",
+            hover_color="#455A64"
+        )
+        self.layout_btn.pack(side="right", padx=5, pady=10)
+        
         # Send button
         self.send_btn = ctk.CTkButton(
             self.toolbar_frame,
@@ -208,7 +246,7 @@ class MainWindow:
     def _create_collection_panel(self):
         """Create collection management panel"""
         self.collection_panel = CollectionPanel(
-            self.sidebar,
+            self.sidebar_frame,
             self.collection_manager,
             self.load_request_from_collection
         )
@@ -536,6 +574,49 @@ class MainWindow:
         self.response_panel.clear_response()
         self.status_label.configure(text="Request loaded from collection")
     
+    def toggle_sidebar(self):
+        """Toggle sidebar visibility"""
+        if self.sidebar_collapsed:
+            # Expand sidebar
+            self.main_paned.paneconfigure(self.sidebar_frame, width=self.sidebar_width, minsize=250)
+            self.toggle_sidebar_btn.configure(text="⋘")
+            self.sidebar_collapsed = False
+        else:
+            # Collapse sidebar
+            self.sidebar_width = self.main_paned.paneconfig(self.sidebar_frame)['width'][4]
+            self.main_paned.paneconfigure(self.sidebar_frame, width=0, minsize=0)
+            self.toggle_sidebar_btn.configure(text="⋙")
+            self.sidebar_collapsed = True
+    
+    def show_layout_options(self):
+        """Show layout configuration dialog"""
+        layout_window = LayoutOptionsDialog(self.root, self.settings, self._apply_layout_settings)
+    
+    def _apply_layout_settings(self):
+        """Apply layout settings from preferences"""
+        # Update panel sizes based on settings
+        self.sidebar_width = self.settings.get_int('layout', 'sidebar_width', 300)
+        self.request_panel_width = self.settings.get_int('layout', 'request_panel_width', 400)
+        self.response_panel_width = self.settings.get_int('layout', 'response_panel_width', 400)
+        
+        if not self.sidebar_collapsed:
+            self.main_paned.paneconfigure(self.sidebar_frame, width=self.sidebar_width)
+        self.content_paned.paneconfigure(self.left_panel, width=self.request_panel_width)
+        self.content_paned.paneconfigure(self.right_panel, width=self.response_panel_width)
+    
+    def _save_layout_settings(self):
+        """Save current layout settings"""
+        if not self.sidebar_collapsed:
+            current_sidebar_width = self.main_paned.paneconfig(self.sidebar_frame)['width'][4]
+            self.settings.set('layout', 'sidebar_width', str(current_sidebar_width))
+        
+        current_request_width = self.content_paned.paneconfig(self.left_panel)['width'][4]
+        current_response_width = self.content_paned.paneconfig(self.right_panel)['width'][4]
+        
+        self.settings.set('layout', 'request_panel_width', str(current_request_width))
+        self.settings.set('layout', 'response_panel_width', str(current_response_width))
+        self.settings.save_settings()
+    
     def on_closing(self):
         """Handle application closing"""
         # Save window position and size
@@ -552,3 +633,157 @@ class MainWindow:
     def run(self):
         """Start the application"""
         self.root.mainloop()
+
+
+class LayoutOptionsDialog:
+    """Dialog for layout configuration options"""
+    
+    def __init__(self, parent, settings: AppSettings, apply_callback):
+        self.settings = settings
+        self.apply_callback = apply_callback
+        
+        # Create dialog window
+        self.dialog = ctk.CTkToplevel(parent)
+        self.dialog.title("Layout Options")
+        self.dialog.geometry("400x300")
+        self.dialog.transient(parent)
+        self.dialog.grab_set()
+        
+        # Center the dialog
+        self.dialog.after(100, lambda: self.dialog.focus())
+        
+        self._create_widgets()
+    
+    def _create_widgets(self):
+        """Create dialog widgets"""
+        # Main frame
+        main_frame = ctk.CTkFrame(self.dialog)
+        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        # Title
+        title_label = ctk.CTkLabel(main_frame, text="Layout Configuration", font=("Arial", 16, "bold"))
+        title_label.pack(pady=(0, 20))
+        
+        # Panel size controls
+        self._create_size_controls(main_frame)
+        
+        # Layout presets
+        self._create_presets(main_frame)
+        
+        # Buttons
+        self._create_buttons(main_frame)
+    
+    def _create_size_controls(self, parent):
+        """Create panel size control widgets"""
+        sizes_frame = ctk.CTkFrame(parent)
+        sizes_frame.pack(fill="x", pady=(0, 10))
+        
+        ctk.CTkLabel(sizes_frame, text="Panel Sizes", font=("Arial", 14, "bold")).pack(pady=10)
+        
+        # Sidebar width
+        sidebar_frame = ctk.CTkFrame(sizes_frame)
+        sidebar_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(sidebar_frame, text="Sidebar Width:").pack(side="left", padx=5)
+        self.sidebar_var = tk.StringVar(value=str(self.settings.get_int('layout', 'sidebar_width', 300)))
+        sidebar_entry = ctk.CTkEntry(sidebar_frame, textvariable=self.sidebar_var, width=80)
+        sidebar_entry.pack(side="right", padx=5)
+        
+        # Request panel width
+        request_frame = ctk.CTkFrame(sizes_frame)
+        request_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(request_frame, text="Request Panel Width:").pack(side="left", padx=5)
+        self.request_var = tk.StringVar(value=str(self.settings.get_int('layout', 'request_panel_width', 400)))
+        request_entry = ctk.CTkEntry(request_frame, textvariable=self.request_var, width=80)
+        request_entry.pack(side="right", padx=5)
+        
+        # Response panel width
+        response_frame = ctk.CTkFrame(sizes_frame)
+        response_frame.pack(fill="x", padx=10, pady=5)
+        
+        ctk.CTkLabel(response_frame, text="Response Panel Width:").pack(side="left", padx=5)
+        self.response_var = tk.StringVar(value=str(self.settings.get_int('layout', 'response_panel_width', 400)))
+        response_entry = ctk.CTkEntry(response_frame, textvariable=self.response_var, width=80)
+        response_entry.pack(side="right", padx=5)
+    
+    def _create_presets(self, parent):
+        """Create layout preset buttons"""
+        presets_frame = ctk.CTkFrame(parent)
+        presets_frame.pack(fill="x", pady=(10, 0))
+        
+        ctk.CTkLabel(presets_frame, text="Layout Presets", font=("Arial", 14, "bold")).pack(pady=10)
+        
+        buttons_frame = ctk.CTkFrame(presets_frame)
+        buttons_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Preset buttons
+        ctk.CTkButton(buttons_frame, text="Default", command=self._apply_default, width=80).pack(side="left", padx=5)
+        ctk.CTkButton(buttons_frame, text="Wide Request", command=self._apply_wide_request, width=100).pack(side="left", padx=5)
+        ctk.CTkButton(buttons_frame, text="Wide Response", command=self._apply_wide_response, width=100).pack(side="left", padx=5)
+    
+    def _create_buttons(self, parent):
+        """Create dialog buttons"""
+        button_frame = ctk.CTkFrame(parent)
+        button_frame.pack(fill="x", pady=(20, 0))
+        
+        ctk.CTkButton(button_frame, text="Apply", command=self._apply_settings, width=80).pack(side="right", padx=(5, 0))
+        ctk.CTkButton(button_frame, text="Cancel", command=self._close_dialog, width=80).pack(side="right", padx=5)
+    
+    def _apply_default(self):
+        """Apply default layout"""
+        self.sidebar_var.set("300")
+        self.request_var.set("400")
+        self.response_var.set("400")
+    
+    def _apply_wide_request(self):
+        """Apply wide request layout"""
+        self.sidebar_var.set("250")
+        self.request_var.set("500")
+        self.response_var.set("350")
+    
+    def _apply_wide_response(self):
+        """Apply wide response layout"""
+        self.sidebar_var.set("250")
+        self.request_var.set("350")
+        self.response_var.set("500")
+    
+    def _apply_settings(self):
+        """Apply and save settings"""
+        try:
+            # Validate and save settings
+            sidebar_width = int(self.sidebar_var.get())
+            request_width = int(self.request_var.get())
+            response_width = int(self.response_var.get())
+            
+            # Basic validation
+            if sidebar_width < 200 or sidebar_width > 600:
+                messagebox.showerror("Invalid Input", "Sidebar width must be between 200 and 600 pixels")
+                return
+            
+            if request_width < 250 or request_width > 800:
+                messagebox.showerror("Invalid Input", "Request panel width must be between 250 and 800 pixels")
+                return
+                
+            if response_width < 250 or response_width > 800:
+                messagebox.showerror("Invalid Input", "Response panel width must be between 250 and 800 pixels")
+                return
+            
+            # Save settings
+            self.settings.set('layout', 'sidebar_width', str(sidebar_width))
+            self.settings.set('layout', 'request_panel_width', str(request_width))
+            self.settings.set('layout', 'response_panel_width', str(response_width))
+            self.settings.save_settings()
+            
+            # Apply settings
+            self.apply_callback()
+            
+            # Close dialog
+            self._close_dialog()
+            
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter valid numeric values")
+    
+    def _close_dialog(self):
+        """Close the dialog"""
+        self.dialog.destroy()
