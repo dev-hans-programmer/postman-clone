@@ -464,21 +464,7 @@ class MainWindow:
         if name:
             self.current_request.name = name
             self.collection_panel.add_request_to_collection(self.current_request, name)
-            messagebox.showinfo("Saved", f"Request '{name}' saved to collection")ata_manager.get_request_collections()
-            
-            # For now, save to a default collection
-            collection_name = "Default Collection"
-            existing_requests = []
-            
-            for coll in collections:
-                if coll['name'] == collection_name:
-                    existing_requests = [APIRequest.from_dict(req) for req in coll['requests']]
-                    break
-            
-            existing_requests.append(self.current_request)
-            self.data_manager.save_request_collection(collection_name, existing_requests)
-            
-            messagebox.showinfo("Save Request", f"Request '{name}' saved successfully")
+            messagebox.showinfo("Saved", f"Request '{name}' saved to collection")
     
     def import_data(self):
         """Import data from file"""
